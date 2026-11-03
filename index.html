@@ -216,13 +216,18 @@
   .stars-row span { display: inline-block; animation: starIn .5s ease backwards; }
   @keyframes starIn { from { transform: scale(0) rotate(-90deg); opacity: 0; } }
 
-  details { margin-top: 20px; text-align: left; }
-  summary { cursor: pointer; font-weight: 600; padding: 12px 0; min-height: 48px; }
-  .review { list-style: none; padding: 0; margin: 8px 0 0; display: grid; gap: 8px; }
-  .review li { padding: 10px 12px; border-radius: 10px; background: #20275a; border-left: 5px solid; }
-  .review li.ok { border-color: var(--ok); }
-  .review li.bad { border-color: var(--bad); }
-  .review small { display: block; color: var(--muted); }
+  /* 전체 문제 검토 화면 */
+  h2#review-title { font-size: clamp(1.2rem, 3.2vw, 1.55rem); margin: 0 0 4px; outline: none; }
+  .rv-list { list-style: none; padding: 0; margin: 16px 0 0; display: grid; gap: 12px; }
+  .rv-item { padding: 14px 16px; border-radius: 12px; background: #20275a; border-left: 6px solid; }
+  .rv-item.ok  { border-color: var(--ok); }
+  .rv-item.bad { border-color: var(--bad); }
+  .rv-q { font-size: 1.05rem; margin: 0 0 6px; }
+  .rv-status { margin: 0 0 6px; font-weight: 700; }
+  .rv-item.ok  .rv-status { color: var(--ok); }
+  .rv-item.bad .rv-status { color: var(--bad); }
+  .rv-line { margin: 2px 0; }
+  .rv-explain { margin: 6px 0 0; color: var(--muted); }
 
   .sr-only {
     position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
@@ -283,13 +288,19 @@
     <div class="rank" id="rank"></div>
     <p id="rank-msg"></p>
 
-    <details>
-      <summary>문제별 결과 보기</summary>
-      <ol class="review" id="review"></ol>
-    </details>
-
     <div class="actions" style="justify-content:center">
+      <button class="btn secondary" id="review-btn" type="button">전체 문제 검토</button>
       <button class="btn" id="restart-btn" type="button">다시 도전하기</button>
+    </div>
+  </section>
+
+  <!-- 전체 문제 검토 화면 -->
+  <section id="review-screen" class="card hidden" aria-labelledby="review-title">
+    <h2 id="review-title" tabindex="-1">전체 문제 검토</h2>
+    <p class="hint" id="rv-summary"></p>
+    <ol class="rv-list" id="rv-list"></ol>
+    <div class="actions" style="justify-content:center">
+      <button class="btn" id="review-back-btn" type="button">← 결과로 돌아가기</button>
     </div>
   </section>
 </main>
@@ -339,7 +350,7 @@
   ];
 
   const $ = (id) => document.getElementById(id);
-  const startEl = $("start"), quizEl = $("quiz"), resultEl = $("result");
+  const startEl = $("start"), quizEl = $("quiz"), resultEl = $("result"), reviewEl = $("review-screen");
   const counterEl = $("counter"), scoreEl = $("score");
   const progressEl = $("progress"), fillEl = $("progress-fill");
   const emojiEl = $("q-emoji"), questionEl = $("question"), optionsEl = $("options");
@@ -358,7 +369,7 @@
   }
 
   function show(el) {
-    [startEl, quizEl, resultEl].forEach((s) => s.classList.add("hidden"));
+    [startEl, quizEl, resultEl, reviewEl].forEach((s) => s.classList.add("hidden"));
     el.classList.remove("hidden");
   }
 
@@ -441,7 +452,7 @@
 
     if (picked.correct) { score++; updateScore(true); }
     const correctText = opts.find((o) => o.correct).text;
-    history.push({ q: item.q, correct: picked.correct, picked: picked.text, answer: correctText });
+    history.push({ emoji: item.emoji, q: item.q, correct: picked.correct, picked: picked.text, answer: correctText, explain: item.explain });
     updateProgress(index + 1);
 
     const fb = document.createElement("div");
@@ -481,26 +492,68 @@
       row.appendChild(s);
     }
 
-    const review = $("review");
-    review.innerHTML = "";
+    $("result-title").focus();
+  }
+
+  function reviewLine(cls, label, text) {
+    const p = document.createElement("p");
+    p.className = cls;
+    const b = document.createElement("strong");
+    b.textContent = label + " ";
+    p.appendChild(b);
+    p.appendChild(document.createTextNode(text));
+    return p;
+  }
+
+  function renderReview() {
+    const list = $("rv-list");
+    list.innerHTML = "";
+    $("rv-summary").textContent = "총 " + total + "문제 중 " + score + "문제를 맞혔어요.";
     history.forEach((h, n) => {
       const li = document.createElement("li");
-      li.className = h.correct ? "ok" : "bad";
-      const t = document.createElement("span");
-      t.textContent = (n + 1) + ". " + (h.correct ? "✓ 정답 " : "✕ 오답 ") + "- " + h.q;
-      li.appendChild(t);
-      if (!h.correct) {
-        const s = document.createElement("small");
-        s.textContent = "내 답: " + h.picked + " / 정답: " + h.answer;
-        li.appendChild(s);
-      }
-      review.appendChild(li);
+      li.className = "rv-item " + (h.correct ? "ok" : "bad");
+
+      const title = document.createElement("h3");
+      title.className = "rv-q";
+      const emoji = document.createElement("span");
+      emoji.setAttribute("aria-hidden", "true");
+      emoji.textContent = h.emoji + " ";
+      title.appendChild(emoji);
+      title.appendChild(document.createTextNode("문제 " + (n + 1) + ". " + h.q));
+      li.appendChild(title);
+
+      const status = document.createElement("p");
+      status.className = "rv-status";
+      const mark = document.createElement("span");
+      mark.setAttribute("aria-hidden", "true");
+      mark.textContent = h.correct ? "✓ " : "✕ ";
+      status.appendChild(mark);
+      status.appendChild(document.createTextNode(h.correct ? "정답" : "오답"));
+      li.appendChild(status);
+
+      li.appendChild(reviewLine("rv-line", "내가 고른 답:", h.picked));
+      if (!h.correct) li.appendChild(reviewLine("rv-line", "정답:", h.answer));
+      li.appendChild(reviewLine("rv-explain", "해설:", h.explain));
+      list.appendChild(li);
     });
-    $("result-title").focus();
+  }
+
+  function openReview() {
+    renderReview();
+    show(reviewEl);
+    window.scrollTo(0, 0);
+    $("review-title").focus();
+  }
+
+  function closeReview() {
+    show(resultEl);
+    $("review-btn").focus();
   }
 
   $("start-btn").addEventListener("click", start);
   $("restart-btn").addEventListener("click", start);
+  $("review-btn").addEventListener("click", openReview);
+  $("review-back-btn").addEventListener("click", closeReview);
   nextBtn.addEventListener("click", next);
 
   // 키보드 단축키: 1~4 로 선택
